@@ -2,11 +2,10 @@ package main
 
 import (
 	"fmt"
-	"net"
-	"os"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/yangmls/vcron"
+	"net"
+	"os"
 )
 
 type Agent struct {
@@ -32,7 +31,19 @@ func (agent *Agent) Run() {
 	agent.Register(conn)
 
 	for {
-		handle(conn)
+		message, err := read(conn)
+
+		if err != nil {
+			conn.Close()
+			fmt.Println("server lost")
+			break
+		}
+
+		fmt.Println(message)
+
+		if message.GetType() == "run" {
+			go RunCommand(message.GetCommand())
+		}
 	}
 }
 
@@ -43,8 +54,6 @@ func (agent *Agent) Register(conn net.Conn) {
 	}
 
 	data, _ := proto.Marshal(message)
-
-	fmt.Println(data)
 
 	conn.Write(data)
 }
@@ -59,12 +68,12 @@ func defaultName() (name string) {
 	return name
 }
 
-func handle(conn net.Conn) {
+func read(conn net.Conn) (*vcron.Message, error) {
 	data := make([]byte, 4096)
 	len, readErr := conn.Read(data)
 
 	if readErr != nil {
-		return
+		return nil, readErr
 	}
 
 	message := &vcron.Message{}
@@ -72,10 +81,8 @@ func handle(conn net.Conn) {
 
 	if uncodeErr != nil {
 		fmt.Println(uncodeErr)
-		return
+		return nil, nil
 	}
 
-	if message.GetType() == "run" {
-		go RunCommand(message.GetCommand())
-	}
+	return message, nil
 }
