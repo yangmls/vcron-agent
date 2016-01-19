@@ -3,13 +3,15 @@ package main
 import (
 	"fmt"
 	"os/exec"
-	"path/filepath"
 	"strings"
+	"time"
 )
 
 func RunCommand(c string) {
 	words := strings.Fields(c)
-	cmd, _ := CreateCommand(words)
+	name := words[0]
+	args := words[1:]
+	cmd := exec.Command(name, args...)
 	output, err := cmd.Output()
 
 	if err != nil {
@@ -17,22 +19,6 @@ func RunCommand(c string) {
 		return
 	}
 
+	fmt.Println(time.Now())
 	fmt.Println(string(output))
-}
-
-func CreateCommand(args []string) (*exec.Cmd, error) {
-	name := args[0]
-	cmd := &exec.Cmd{
-		Path: name,
-		Args: args,
-	}
-	if filepath.Base(name) == name {
-		lp, err := exec.LookPath(name)
-		if err != nil {
-			return cmd, err
-		}
-
-		cmd.Path = lp
-	}
-	return cmd, nil
 }
