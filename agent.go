@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/yangmls/vcron"
-	"io/ioutil"
 	"net"
 	"os"
 )
@@ -62,12 +61,15 @@ func (agent *Agent) Waiting() {
 
 func (agent *Agent) WaitRequest() (*vcron.Request, error) {
 	fmt.Println("waiting request")
-	data, err := ioutil.ReadAll(agent.C)
+	buf := make([]byte, 2048)
+	len, err := agent.C.Read(buf)
 	fmt.Println("got request")
 
 	if err != nil {
 		return nil, err
 	}
+
+	data := buf[0:len]
 
 	request := &vcron.Request{}
 
