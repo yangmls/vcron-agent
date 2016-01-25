@@ -19,6 +19,5 @@ func RunCommand(c string) {
 		return
 	}
 
-	fmt.Println(time.Now())
-	fmt.Println(string(output))
+	fmt.Println(string(output), time.Now().Second())
 }

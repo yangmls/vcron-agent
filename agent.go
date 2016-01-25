@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/yangmls/vcron"
+	"io/ioutil"
 	"net"
 	"os"
 )
@@ -12,50 +13,90 @@ type Agent struct {
 	Name string
 	Addr string
 	Port string
+	C    net.Conn
 }
 
 func (agent *Agent) Run() {
-	if agent.Name == "" {
-		agent.Name = defaultName()
-	}
-
-	conn, err := net.Dial("tcp", agent.Addr+":"+agent.Port)
+	err := agent.Connect()
 
 	if err != nil {
-		fmt.Println("can not connect to" + agent.Addr + ":" + agent.Port)
+		fmt.Println("can not connect to", agent.Addr, "on port", agent.Port)
 		return
 	}
 
-	defer conn.Close()
+	agent.Waiting()
+}
 
-	agent.Register(conn)
+func (agent *Agent) Connect() error {
+	conn, err := net.Dial("tcp", agent.Addr+":"+agent.Port)
 
+	agent.C = conn
+	return err
+}
+
+func (agent *Agent) Waiting() {
 	for {
-		message, err := read(conn)
+		request, err := agent.WaitRequest()
 
 		if err != nil {
-			conn.Close()
-			fmt.Println("server lost")
 			break
 		}
 
-		fmt.Println(message)
-
-		if message.GetType() == "run" {
-			go RunCommand(message.GetCommand())
+		response := &vcron.Response{
+			Result: true,
 		}
+
+		if request.Type == "register" {
+			response.Message = agent.Name
+		}
+
+		if request.Type == "run" {
+			for _, job := range request.Jobs {
+				go RunCommand(job.Command)
+			}
+		}
+
+		agent.SendResponse(response)
 	}
 }
 
-func (agent *Agent) Register(conn net.Conn) {
-	message := &vcron.Message{
-		Type: proto.String("register"),
-		Name: &agent.Name,
+func (agent *Agent) WaitRequest() (*vcron.Request, error) {
+	fmt.Println("waiting request")
+	data, err := ioutil.ReadAll(agent.C)
+	fmt.Println("got request")
+
+	if err != nil {
+		return nil, err
 	}
 
-	data, _ := proto.Marshal(message)
+	request := &vcron.Request{}
 
-	conn.Write(data)
+	err = proto.Unmarshal(data, request)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return request, nil
+}
+
+func (agent *Agent) SendResponse(response *vcron.Response) {
+	data, _ := proto.Marshal(response)
+	agent.C.Write(data)
+}
+
+func NewAgent(name string, addr string, port string) *Agent {
+	if name == "" {
+		name = defaultName()
+	}
+
+	agent := &Agent{
+		Name: name,
+		Addr: addr,
+		Port: port,
+	}
+
+	return agent
 }
 
 func defaultName() (name string) {
@@ -66,23 +107,4 @@ func defaultName() (name string) {
 	}
 
 	return name
-}
-
-func read(conn net.Conn) (*vcron.Message, error) {
-	data := make([]byte, 4096)
-	len, readErr := conn.Read(data)
-
-	if readErr != nil {
-		return nil, readErr
-	}
-
-	message := &vcron.Message{}
-	uncodeErr := proto.Unmarshal(data[0:len], message)
-
-	if uncodeErr != nil {
-		fmt.Println(uncodeErr)
-		return nil, nil
-	}
-
-	return message, nil
 }
