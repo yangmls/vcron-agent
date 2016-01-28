@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/yangmls/vcron"
@@ -60,20 +61,57 @@ func (agent *Agent) Waiting() {
 }
 
 func (agent *Agent) WaitRequest() (*vcron.Request, error) {
+	var (
+		n   int
+		err error
+	)
+
 	fmt.Println("waiting request")
-	buf := make([]byte, 2048)
-	len, err := agent.C.Read(buf)
+
+	prefix := make([]byte, 4, 4)
+
+	if n, err = agent.C.Read(prefix); err != nil {
+		return nil, err
+	}
+
+	fmt.Println(prefix)
+
+	if n == 0 {
+		return nil, nil
+	}
+
+	if n != 4 {
+		return nil, nil
+	}
+
+	var (
+		size    uint64
+		errcode int
+	)
+
+	if size, errcode = binary.Uvarint(prefix); errcode <= 0 {
+		return nil, nil
+	}
+
+	buf := make([]byte, int(size), int(size))
+
+	if n, err = agent.C.Read(buf); err != nil {
+		return nil, err
+	}
+
+	if uint64(n) != size {
+		return nil, nil
+	}
+
 	fmt.Println("got request")
 
 	if err != nil {
 		return nil, err
 	}
 
-	data := buf[0:len]
-
 	request := &vcron.Request{}
 
-	err = proto.Unmarshal(data, request)
+	err = proto.Unmarshal(buf, request)
 
 	if err != nil {
 		return nil, err
